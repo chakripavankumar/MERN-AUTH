@@ -1,12 +1,14 @@
 import { APP_ORIGIN, JWT_REFRESH_SECRET } from "../constants/env";
+import { CONFLICT, UNAUTHORIZED } from "../constants/http";
 import verificationCodeType from "../constants/verificationCodeTypes";
 import SessionModel from "../models/session.model";
 import UserModel from "../models/user.model";
 import VerificationCodeModel from "../models/verification.model";
+import appAsert from "../utils/AppAssert";
 import { oneYearFromNow } from "../utils/date";
-import jwt from "jsonwebtoken";
+import { refreshTokenOptions, signToken } from "../utils/jwt";
 
-export type createAccountParams = {
+type createAccountParams = {
   email: string;
   password: string;
   userAgent?: string;
@@ -16,9 +18,8 @@ export const createAccount = async (date: createAccountParams) => {
   const existingUser = await UserModel.exists({
     email: date.email,
   });
-  if (existingUser) {
-    throw new Error("User already exsits");
-  }
+  appAsert(!existingUser, CONFLICT, "Email already in use");
+
   //  create the user
   const user = await UserModel.create({
     email: date.email,
@@ -39,22 +40,49 @@ export const createAccount = async (date: createAccountParams) => {
     userAgent: date.userAgent,
   });
   // sign access token and refresh token
-  const refreshToken = jwt.sign(
+  const refreshToken = signToken(
     { sessionId: session._id },
-    JWT_REFRESH_SECRET,
-    {
-      audience: ["user"],
-      expiresIn: "30d",
-    }
+    refreshTokenOptions
   );
-  const accessToken = jwt.sign(
-    { userId: user._id, sessionId: session._id },
-    JWT_REFRESH_SECRET,
-    {
-      audience: ["user"],
-      expiresIn: "15m",
-    }
-  );
+  const accessToken = signToken({ userId: user._id, sessionId: session._id });
   // return user and tokens
-  return { user, accessToken, refreshToken };
+  return {
+    user: user.omitPassword(),
+    accessToken,
+    refreshToken,
+  };
+};
+type LoginParams = {
+  email: string;
+  password: string;
+  userAgent?: string;
+};
+
+export const loginUser = async ({
+  email,
+  password,
+  userAgent,
+}: LoginParams) => {
+  // get the user by email
+  const user = await UserModel.findOne({ email });
+  appAsert(user, UNAUTHORIZED, "Invalid emial or password");
+  // validate password from the request
+  const isvalid = await user.comparePassword(password);
+  appAsert(isvalid, UNAUTHORIZED, "Invalid emial or password");
+  // create a session
+  const userId = user._id;
+  const session = await SessionModel.create({
+    userId,
+    userAgent,
+  });
+  const sessionInfo = { sessionId: session._id };
+  // sign access and refresh token
+  const refreshToken = signToken(sessionInfo, refreshTokenOptions);
+
+  const accessToken = signToken({
+    ...sessionInfo,
+    userId: user._id,
+  });
+  // return user and tokens
+  return { user: user.omitPassword(), accessToken, refreshToken };
 };
