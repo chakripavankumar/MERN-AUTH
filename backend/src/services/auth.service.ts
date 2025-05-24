@@ -1,4 +1,4 @@
-import { APP_ORIGIN, JWT_REFRESH_SECRET } from "../constants/env";
+import { APP_ORIGIN } from "../constants/env";
 import { CONFLICT, UNAUTHORIZED } from "../constants/http";
 import verificationCodeType from "../constants/verificationCodeTypes";
 import SessionModel from "../models/session.model";
@@ -19,7 +19,6 @@ export const createAccount = async (date: createAccountParams) => {
     email: date.email,
   });
   appAsert(!existingUser, CONFLICT, "Email already in use");
-
   //  create the user
   const user = await UserModel.create({
     email: date.email,
@@ -57,7 +56,6 @@ type LoginParams = {
   password: string;
   userAgent?: string;
 };
-
 export const loginUser = async ({
   email,
   password,
