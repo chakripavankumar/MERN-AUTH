@@ -1,8 +1,18 @@
-import { CREATED, OK } from "../constants/http";
+import { CREATED, OK, UNAUTHORIZED } from "../constants/http";
 import SessionModel from "../models/session.model";
-import { createAccount, loginUser } from "../services/auth.service";
+import {
+  createAccount,
+  loginUser,
+  refreshUserAccessToken,
+} from "../services/auth.service";
+import appAsert from "../utils/AppAssert";
 import catchErrors from "../utils/catchErrors";
-import { clearAuthCokkies, setAuthCokkies } from "../utils/cookies";
+import {
+  clearAuthCokkies,
+  getAccessTokenCookieOptions,
+  getRefreshTokenCookieOptions,
+  setAuthCokkies,
+} from "../utils/cookies";
 import { verifyToken } from "../utils/jwt";
 import { loginSchema, registerSchema } from "./auth.schema";
 
@@ -30,13 +40,30 @@ export const loginHandler = catchErrors(async (req, res) => {
   });
 });
 
-export const logoutHandler = catchErrors( async (req , res) => {
-  const accessToken = req.cookies.accessToken;
-  const {payload , error} =  verifyToken(accessToken)
-  if(payload){
-    await SessionModel.findByIdAndDelete(payload.sessionId)
+export const logoutHandler = catchErrors(async (req, res) => {
+  const accessToken = req.cookies.accessToken as string | undefined;
+  const { payload, error } = verifyToken(accessToken || "");
+  if (payload) {
+    await SessionModel.findByIdAndDelete(payload.sessionId);
   }
   return clearAuthCokkies(res).status(OK).json({
-    message : "laogout successful"
-  })
-})
+    message: "laogout successful",
+  });
+});
+
+export const refreshHandler = catchErrors(async (req, res) => {
+  const refreshToken = req.cookies.refreshToken as string | undefined;
+  appAsert(refreshToken, UNAUTHORIZED, "Missing refresh token");
+
+  const { accessToken, newRefreshToken } = 
+    await refreshUserAccessToken(refreshToken);
+  
+  if (newRefreshToken) {
+    res.cookie("refreshToken", newRefreshToken, getRefreshTokenCookieOptions());
+  }
+  
+  return res
+    .status(OK)
+    .cookie("accessToken", accessToken, getAccessTokenCookieOptions()) // Fixed: removed space in cookie name
+    .json({ message: "Access token refreshed" });
+});
