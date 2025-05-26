@@ -4,6 +4,7 @@ import {
   createAccount,
   loginUser,
   refreshUserAccessToken,
+  resetPaasword,
   sendPasswordResetEmail,
   verifyEmail,
 } from "../services/auth.service";
@@ -20,6 +21,7 @@ import {
   emailSchema,
   loginSchema,
   registerSchema,
+  resetPasswordSchema,
   verificationCodeSchema,
 } from "./auth.schema";
 
@@ -89,3 +91,10 @@ export const sendForgotEmailHandler = catchErrors(async (req, res) => {
     message: "password reset mail sent",
   });
 });
+export const resetPasswordHandler =  catchErrors( async ( req,res) => {
+  const request =  resetPasswordSchema.parse(req.body);
+  await resetPaasword(request);
+  return clearAuthCokkies(res).status(OK).json({
+    message : "Password reset successful"
+  })
+})
