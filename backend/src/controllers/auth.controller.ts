@@ -4,6 +4,8 @@ import {
   createAccount,
   loginUser,
   refreshUserAccessToken,
+  sendPasswordResetEmail,
+  verifyEmail,
 } from "../services/auth.service";
 import appAsert from "../utils/AppAssert";
 import catchErrors from "../utils/catchErrors";
@@ -14,7 +16,12 @@ import {
   setAuthCokkies,
 } from "../utils/cookies";
 import { verifyToken } from "../utils/jwt";
-import { loginSchema, registerSchema } from "./auth.schema";
+import {
+  emailSchema,
+  loginSchema,
+  registerSchema,
+  verificationCodeSchema,
+} from "./auth.schema";
 
 export const registerHandler = catchErrors(async (req, res) => {
   // validate request
@@ -55,15 +62,30 @@ export const refreshHandler = catchErrors(async (req, res) => {
   const refreshToken = req.cookies.refreshToken as string | undefined;
   appAsert(refreshToken, UNAUTHORIZED, "Missing refresh token");
 
-  const { accessToken, newRefreshToken } = 
+  const { accessToken, newRefreshToken } =
     await refreshUserAccessToken(refreshToken);
-  
+
   if (newRefreshToken) {
     res.cookie("refreshToken", newRefreshToken, getRefreshTokenCookieOptions());
   }
-  
+
   return res
     .status(OK)
     .cookie("accessToken", accessToken, getAccessTokenCookieOptions()) // Fixed: removed space in cookie name
     .json({ message: "Access token refreshed" });
+});
+
+export const verifyEmailHandler = catchErrors(async (req, res) => {
+  const verificationCode = verificationCodeSchema.parse(req.params.code);
+  await verifyEmail(verificationCode);
+  return res.status(OK).json({ message: "Email was successfully verified" });
+});
+
+export const sendForgotEmailHandler = catchErrors(async (req, res) => {
+  const email = emailSchema.parse(req.body.email);
+  // call service
+  await sendPasswordResetEmail(email);
+  return res.status(OK).json({
+    message: "password reset mail sent",
+  });
 });

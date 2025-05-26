@@ -1,17 +1,33 @@
 import { APP_ORIGIN } from "../constants/env";
-import { CONFLICT, UNAUTHORIZED } from "../constants/http";
+import {
+  CONFLICT,
+  INTERNAL_SERVER_ERROR,
+  NOT_FOUND,
+  UNAUTHORIZED,
+} from "../constants/http";
 import verificationCodeType from "../constants/verificationCodeTypes";
 import SessionModel from "../models/session.model";
 import UserModel from "../models/user.model";
 import VerificationCodeModel from "../models/verification.model";
 import appAsert from "../utils/AppAssert";
-import { ONE_DAY_MS, oneYearFromNow, thirtyDaysFromNow } from "../utils/date";
+import {
+  fiveMinutesAgo,
+  ONE_DAY_MS,
+  oneHourFromNow,
+  oneYearFromNow,
+  thirtyDaysFromNow,
+} from "../utils/date";
+import {
+  getPasswordResetTemplate,
+  getVerifyEmailTemplate,
+} from "../utils/emailTemplate";
 import {
   refreshTokenOptions,
   RefreshTokenPlayload,
   signToken,
   verifyToken,
 } from "../utils/jwt";
+import { sendMail } from "../utils/sendMail";
 
 type createAccountParams = {
   email: string;
@@ -38,6 +54,10 @@ export const createAccount = async (date: createAccountParams) => {
   });
   const url = `${APP_ORIGIN}/email/verify/${verificationCode._id}`;
   // send verification mail
+  await sendMail({
+    to: user.email,
+    ...getVerifyEmailTemplate(url),
+  });
   // create session
   const session = await SessionModel.create({
     userId,
@@ -81,7 +101,6 @@ export const loginUser = async ({
   const sessionInfo = { sessionId: session._id };
   // sign access and refresh token
   const refreshToken = signToken(sessionInfo, refreshTokenOptions);
-
   const accessToken = signToken({
     ...sessionInfo,
     userId: user._id,
@@ -102,7 +121,7 @@ export const refreshUserAccessToken = async (refreshToken: string) => {
     "session expired"
   );
   // refrsh the session if it expires in the next 24 hours
-   const sessionNeedsRefresh = session.expiresAt.getTime() - now <= ONE_DAY_MS;
+  const sessionNeedsRefresh = session.expiresAt.getTime() - now <= ONE_DAY_MS;
   if (sessionNeedsRefresh) {
     session.expiresAt = thirtyDaysFromNow();
     await session.save();
@@ -119,9 +138,69 @@ export const refreshUserAccessToken = async (refreshToken: string) => {
     userId: session.userId,
     sessionId: session._id,
   });
-
   return {
     accessToken,
-   newRefreshToken,
+    newRefreshToken,
+  };
+};
+export const verifyEmail = async (code: string) => {
+  // get the verification code
+  const validCode = await VerificationCodeModel.findOne({
+    _id: code,
+    type: verificationCodeType.EmailVerification,
+    expiresAt: { $gt: new Date() },
+  });
+  appAsert(validCode, NOT_FOUND, "Invalid or expired verification code");
+  // get user by Id
+  // update user  to verified true
+  const updateUser = await UserModel.findByIdAndUpdate(
+    validCode.userId,
+    {
+      verified: true,
+    },
+    { new: true }
+  );
+  appAsert(updateUser, INTERNAL_SERVER_ERROR, "Failed to verify email");
+  // delete verification code
+  await validCode.deleteOne();
+  // return user
+  return {
+    user: updateUser.omitPassword(),
+  };
+};
+export const sendPasswordResetEmail = async (email: string) => {
+  // get the user by Emial
+  const user = await UserModel.findOne({ email });
+  appAsert(user, NOT_FOUND, "user not gound");
+  //check email rate limit
+  const fiveminsago = fiveMinutesAgo();
+  const count = await VerificationCodeModel.countDocuments({
+    userId: user._id,
+    type: verificationCodeType.PasswordReset,
+    createdAt: { $gt: fiveMinutesAgo() },
+  });
+  appAsert(count <= 2, UNAUTHORIZED, "Too many requests");
+  //create verification code
+  const expiresAt = oneHourFromNow();
+  const verificationCode = await VerificationCodeModel.create({
+    userId: user._id,
+    type: verificationCodeType.PasswordReset,
+    expiresAt,
+  });
+  //send verification email
+  const url = `${APP_ORIGIN}/password/reset?code=${verificationCode._id}&exp=${expiresAt.getTime()}`;
+  const { data, error } = await sendMail({
+    to: user.email,
+    ...getPasswordResetTemplate(url),
+  });
+  appAsert(
+    data?.id,
+    INTERNAL_SERVER_ERROR,
+    `${error?.name} -  ${error?.message}`
+  );
+  // returtn success
+  return {
+    url,
+    emailId: data.id,
   };
 };
