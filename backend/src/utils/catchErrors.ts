@@ -7,7 +7,7 @@ type AsyncController = (
 ) => Promise<any>;
 
 const catchErrors =
-  (controller: AsyncController): AsyncController =>
+  (controller: AsyncController, res?: any, next?: any): AsyncController =>
   async (req, res, next) => {
     try {
       await controller(req, res, next);

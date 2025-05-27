@@ -9,6 +9,7 @@ import authRoutes from "./routes/auth.routes";
 import { OK } from "./constants/http";
 import authenticate from "./middleware/authenticate";
 import userRoutes from "./routes/user.routes";
+import sessionRoutes from "./routes/session.routes";
 
 const app = express();
 
@@ -33,7 +34,8 @@ app.get("/", (req: Request, res: Response) => {
 // auth routes
 app.use("/auth", authRoutes);
 // protected routes
-app.use("/user" , authenticate , userRoutes)
+app.use("/user" , authenticate , userRoutes);
+app.use("/sessions" ,  authenticate , sessionRoutes);
 
 app.use(errorHandler);
 app.listen(PORT, async () => {

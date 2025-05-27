@@ -9,20 +9,21 @@ const authenticate: RequestHandler = (req, res, next) => {
   appAsert(
     accessToken,
     UNAUTHORIZED,
-    " NOt authorized",
+    "Not authorized",
     AppErrorCode.InvalidAccessToken
   );
-
   const { error, payload } = verifyToken(accessToken);
   appAsert(
     payload,
     UNAUTHORIZED,
-    error === "jwt expired " ? "token Expied" : "Ivalid token",
+    error === "jwt expired" ? "Token expired" : "Invalid token",
     AppErrorCode.InvalidAccessToken
   );
   //@ts-ignore
   req.userId = payload.userId;
   // @ts-ignore
   req.sessionId = payload.sessionId;
+  next();
 };
+
 export default authenticate;
